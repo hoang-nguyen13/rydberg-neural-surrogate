@@ -92,12 +92,16 @@ def collate_fn(batch):
     return out
 
 
-def create_splits(records: List) -> Tuple[List, List, Dict[str, List]]:
+def create_splits(records: List, omega_selected=None) -> Tuple[List, List, Dict[str, List]]:
     """
     Create splits for multiple generalization experiments.
     
     Returns: (train_records, val_records, test_sets_dict)
     """
+    import numpy as np
+    if omega_selected is None:
+        omega_selected = [round(x, 8) for x in np.arange(10.0, 13.01, 0.15)]
+    
     # Sort records for deterministic splitting
     records = sorted(records, key=lambda r: (r.dimension, r.gamma, r.n_atoms, r.omega))
     
@@ -105,46 +109,37 @@ def create_splits(records: List) -> Tuple[List, List, Dict[str, List]]:
     val = []
     test_sets = {}
     
-    # === PRIMARY: 2D, γ=0.1 ===
-    # This is the bulk of the data and the main physics story
+    # === PRIMARY: 2D, γ=0.1, SELECTED Ω only ===
     recs_2d_q = [r for r in records if r.dimension == 2 and abs(r.gamma - 0.1) < 1e-6]
+    # Filter to selected Ω values (the ones in our plots)
+    recs_2d_q = [r for r in recs_2d_q if round(r.omega, 8) in omega_selected]
     
-    # Training: smaller to medium sizes (N ≤ 2500)
-    train_sizes_2d = {100, 225, 400, 900, 1225, 1600, 2500}
-    train_2d = [r for r in recs_2d_q if r.n_atoms in train_sizes_2d]
+    # Training: N = 225, 400, 900, 1600, 2500
+    train_2d = [r for r in recs_2d_q if r.n_atoms in {225, 400, 900, 1600, 2500}]
     
-    # Validation: medium-large sizes (N = 3025, 3600)
-    val_2d = [r for r in recs_2d_q if r.n_atoms in {3025, 3600}]
+    # Validation: N = 3600
+    val_2d = [r for r in recs_2d_q if r.n_atoms == 3600]
     
-    # Test 1: Size extrapolation (N = 4900, 6400, 10000, 21025)
+    # Test: N = 4900 only (6400/10000/21025 excluded — insufficient data)
     test_sets['size_extrapolation_2d'] = [
-        r for r in recs_2d_q if r.n_atoms in {4900, 6400, 10000, 21025}
+        r for r in recs_2d_q if r.n_atoms == 4900
     ]
     
     train.extend(train_2d)
     val.extend(val_2d)
     
-    # === SECONDARY: γ-generalization (2D, N=3600) ===
-    # Train on γ=0.1, test on γ=5, 10, 20 (classical regime)
+    # === γ-generalization (2D, N=3600, ALL γ values) ===
+    # Test ALL dephasing rates at fixed N=3600
     recs_2d_gamma = [r for r in records if r.dimension == 2 and r.n_atoms == 3600]
-    
-    # γ=0.1 already in train_2d (N=3600 is in val, so this is fine)
-    # Test on classical γ values
-    test_sets['gamma_classical_2d'] = [
-        r for r in recs_2d_gamma if r.gamma in {5.0, 10.0, 20.0}
-    ]
-    
-    # === TERTIARY: Dimension generalization (γ=0.1) ===
-    # Test on 1D and 3D with γ=0.1
-    recs_1d = [r for r in records if r.dimension == 1 and abs(r.gamma - 0.1) < 1e-6]
-    recs_3d_q = [r for r in records if r.dimension == 3 and abs(r.gamma - 0.1) < 1e-6]
-    
-    test_sets['dimension_1d'] = recs_1d
-    test_sets['dimension_3d'] = recs_3d_q
-    
-    # === BONUS: Quantum γ-generalization (3D, γ=1e-5) ===
-    recs_3d_quantum = [r for r in records if r.dimension == 3 and abs(r.gamma - 1e-5) < 1e-10]
-    test_sets['gamma_quantum_3d'] = recs_3d_quantum
+    # Filter to selected Ω for γ=0.1; keep all available Ω for other γ
+    gamma_test = []
+    for r in recs_2d_gamma:
+        if r.gamma == 0.1:
+            if round(r.omega, 8) in omega_selected:
+                gamma_test.append(r)
+        else:
+            gamma_test.append(r)
+    test_sets['gamma_generalization_2d'] = gamma_test
     
     # Print summary
     print("=" * 70)

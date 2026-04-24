@@ -421,8 +421,9 @@ def main(args):
     all_preds_flat = []
     all_trues_flat = []
     all_metas_flat = []
+    split_records_map = {"Train": train_r, "Val": val_r, **test_sets}
     for name in all_preds:
-        all_records_flat.extend(val_r if name == "Val" else test_sets.get(name, []))
+        all_records_flat.extend(split_records_map[name])
         all_preds_flat.extend(all_preds[name])
         all_trues_flat.extend(all_trues[name])
         all_metas_flat.extend(all_metas[name])

@@ -10,3 +10,9 @@ __pycache__/
 input.txt
 env/
 venv/
+# Large data and output directories
+MasterThesis/
+Rydberg_facilitation/
+outputs/
+*.pdf
+gptqe.pdf

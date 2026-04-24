@@ -3,14 +3,18 @@
 .ipynb_checkpoints/
 .vscode
 __pycache__/
-*.pkl
-*.pt
 *.pyc
 env/
 venv/
 
-# Large data and output directories
+# Large output directories
+outputs/
 MasterThesis/
 Rydberg_facilitation/
-outputs/
 *.pdf
+
+# Model checkpoints (large)
+*.pt
+
+# Keep the dataset in data/
+!data/rydberg_dataset_v2.pkl

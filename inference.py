@@ -1,8 +1,8 @@
 """
-Inference script for trained RydbergSurrogate model.
+Inference script for trained RydbergSurrogate model (v2).
 
 Usage:
-    python inference.py --model_path outputs/models/best_model.pt --omega 11.5 --n_atoms 1225
+    python inference.py --model_path outputs/models/best_model.pt --omega 11.5 --n_atoms 3600 --gamma 0.1 --dimension 2
 """
 
 import argparse
@@ -36,13 +36,15 @@ def load_model(model_path, device='cpu'):
     return model, checkpoint
 
 
-def predict(model, omega, n_atoms, t_max=1000.0, n_time=400, device='cpu'):
+def predict(model, omega, n_atoms, gamma, dimension, t_max=1000.0, n_time=400, device='cpu'):
     """
     Predict sz_mean(t) for given parameters.
     
     Args:
         omega: Rabi frequency
         n_atoms: Number of atoms (system size)
+        gamma: Dephasing rate
+        dimension: Lattice dimension (1, 2, or 3)
         t_max: Final time
         n_time: Number of time steps
         device: torch device
@@ -55,9 +57,11 @@ def predict(model, omega, n_atoms, t_max=1000.0, n_time=400, device='cpu'):
     omega_t = torch.tensor([omega], dtype=torch.float32).to(device)
     n_atoms_t = torch.tensor([n_atoms], dtype=torch.float32).to(device)
     inv_sqrt_n = torch.tensor([1.0 / np.sqrt(n_atoms)], dtype=torch.float32).to(device)
+    gamma_t = torch.tensor([np.log10(gamma + 1e-10)], dtype=torch.float32).to(device)
+    dimension_t = torch.tensor([dimension], dtype=torch.float32).to(device)
     
     with torch.no_grad():
-        sz_pred = model(omega_t, n_atoms_t, inv_sqrt_n, t).cpu().numpy()[0]
+        sz_pred = model(omega_t, n_atoms_t, inv_sqrt_n, gamma_t, dimension_t, t).cpu().numpy()[0]
     
     return t.cpu().numpy()[0], sz_pred
 
@@ -71,14 +75,14 @@ def main(args):
     print(f"Model trained for {checkpoint.get('epoch', '?')} epochs")
     
     # Predict
-    t, sz_pred = predict(model, args.omega, args.n_atoms, device=device)
+    t, sz_pred = predict(model, args.omega, args.n_atoms, args.gamma, args.dimension, device=device)
     
     # Compute derived quantities
     rho_pred = (sz_pred + 1.0) / 2.0
     rho_ss = np.mean(rho_pred[-50:])
     sz_ss = np.mean(sz_pred[-50:])
     
-    print(f"\nParameters: Omega={args.omega}, N={args.n_atoms}")
+    print(f"\nParameters: Omega={args.omega}, N={args.n_atoms}, gamma={args.gamma}, d={args.dimension}")
     print(f"Predicted steady-state rho_ss: {rho_ss:.6f}")
     print(f"Predicted steady-state sz_ss:  {sz_ss:.6f}")
     print(f"Phase: {'ACTIVE' if rho_ss > 0.05 else 'ABSORBING'}")
@@ -87,14 +91,14 @@ def main(args):
     n_runs = 100
     start = time.time()
     for _ in range(n_runs):
-        _ = predict(model, args.omega, args.n_atoms, device=device)
+        _ = predict(model, args.omega, args.n_atoms, args.gamma, args.dimension, device=device)
     elapsed = time.time() - start
     print(f"\nInference time: {elapsed/n_runs*1000:.3f} ms per trajectory")
     
     # Save prediction
     if args.output_path:
         np.savez(args.output_path, t=t, sz_mean=sz_pred, rho=rho_pred,
-                 omega=args.omega, n_atoms=args.n_atoms)
+                 omega=args.omega, n_atoms=args.n_atoms, gamma=args.gamma, dimension=args.dimension)
         print(f"Saved prediction to: {args.output_path}")
 
 
@@ -103,6 +107,8 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--omega', type=float, required=True)
     parser.add_argument('--n_atoms', type=int, required=True)
+    parser.add_argument('--gamma', type=float, default=0.1)
+    parser.add_argument('--dimension', type=int, default=2)
     parser.add_argument('--output_path', type=str, default=None)
     args = parser.parse_args()
     main(args)

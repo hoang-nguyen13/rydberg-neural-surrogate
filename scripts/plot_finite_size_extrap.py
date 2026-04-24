@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Load parsed data
-with open('outputs/rydberg_dataset_v2.pkl', 'rb') as f:
+with open('data/rydberg_dataset_v2.pkl', 'rb') as f:
     records = pickle.load(f)
 
 # === Thesis parameters ===

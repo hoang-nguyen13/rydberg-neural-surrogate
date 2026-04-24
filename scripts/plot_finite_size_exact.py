@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
 # Load data
-with open('outputs/rydberg_dataset_v2.pkl', 'rb') as f:
+with open('data/rydberg_dataset_v2.pkl', 'rb') as f:
     records = pickle.load(f)
 
 # === EXACT parameters from thesis code ===

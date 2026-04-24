@@ -230,7 +230,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_root', type=str, 
                         default='/Users/hoangnguyen/Downloads/Rydberg_facilitation/results_data_mean',
                         help='Root directory containing JLD2 files')
-    parser.add_argument('--output', type=str, default='outputs/rydberg_dataset_v2.pkl',
+    parser.add_argument('--output', type=str, default='data/rydberg_dataset_v2.pkl',
                         help='Output pickle file path')
     args = parser.parse_args()
     

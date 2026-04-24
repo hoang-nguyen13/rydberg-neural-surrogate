@@ -346,7 +346,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # Data
-    parser.add_argument('--data_path', type=str, default='outputs/rydberg_dataset_v2.pkl')
+    parser.add_argument('--data_path', type=str, default='data/rydberg_dataset_v2.pkl')
     parser.add_argument('--output_dir', type=str, default='outputs/models')
     
     # Model

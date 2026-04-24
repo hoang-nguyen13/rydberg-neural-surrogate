@@ -118,7 +118,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, default="outputs/rydberg_dataset_v2.pkl")
+    parser.add_argument("--data_path", type=str, default="data/rydberg_dataset_v2.pkl")
     parser.add_argument("--output_dir", type=str, default="outputs/models")
     parser.add_argument("--time_subsample", type=int, default=5)
     args = parser.parse_args()

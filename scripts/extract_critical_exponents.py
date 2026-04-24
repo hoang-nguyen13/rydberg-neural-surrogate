@@ -22,7 +22,7 @@ OMEGA_C = 11.2
 
 
 def load_data():
-    with open("outputs/rydberg_dataset_v2.pkl", "rb") as f:
+    with open("data/rydberg_dataset_v2.pkl", "rb") as f:
         data = pickle.load(f)
     return data
 

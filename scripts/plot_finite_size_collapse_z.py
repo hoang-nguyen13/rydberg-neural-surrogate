@@ -29,7 +29,7 @@ Z_VALUES_ALL = [1.20, 1.60, 1.70, 1.84, 1.86, 1.90, 2.00, 2.02, 2.20, 3.00]
 
 
 def load_data():
-    with open("outputs/rydberg_dataset_v2.pkl", "rb") as f:
+    with open("data/rydberg_dataset_v2.pkl", "rb") as f:
         data = pickle.load(f)
     return data
 

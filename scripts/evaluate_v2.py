@@ -436,6 +436,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True, help="Path to trained model checkpoint")
-    parser.add_argument("--data_path", type=str, default="outputs/rydberg_dataset_v2.pkl")
+    parser.add_argument("--data_path", type=str, default="data/rydberg_dataset_v2.pkl")
     args = parser.parse_args()
     main(args)

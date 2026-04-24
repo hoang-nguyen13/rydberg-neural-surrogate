@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-with open('outputs/rydberg_dataset_v2.pkl', 'rb') as f:
+with open('data/rydberg_dataset_v2.pkl', 'rb') as f:
     records = pickle.load(f)
 
 N = 3600

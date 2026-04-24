@@ -1,5 +1,5 @@
 """
-Training script for RydbergSurrogate transformer model.
+Training script for RydbergSurrogate transformer model (v2 dataset).
 
 Usage:
     python train.py --max_epochs 500 --patience 50 --batch_size 32 --lr 1e-3
@@ -23,8 +23,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / 'data'))
 sys.path.insert(0, str(Path(__file__).parent / 'models'))
 
-from parse_jld2 import TrajectoryRecord
-from dataset import TrajectoryDataset, create_splits, load_dataset, collate_fn, worker_init_fn
+from dataset_v2 import TrajectoryDataset, create_splits, load_dataset, collate_fn, worker_init_fn
+from parse_jld2_v2 import TrajectoryRecord  # needed for pickle unpickling
 from transformer_surrogate import RydbergSurrogate
 
 
@@ -34,8 +34,8 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
 
 
 class EMA:
@@ -76,7 +76,7 @@ def physics_informed_loss(pred, target, bounds_weight=0.1, smoothness_weight=0.0
     upper_violation = torch.relu(pred - 1.0)
     bounds_penalty = (lower_violation + upper_violation).mean()
     
-    # Smoothness regularization (generic Tikhonov, not physics-informed)
+    # Smoothness regularization
     if pred.size(1) > 2:
         d2 = pred[:, 2:] - 2 * pred[:, 1:-1] + pred[:, :-2]
         smoothness_penalty = (d2 ** 2).mean()
@@ -116,11 +116,13 @@ def train_epoch(model, dataloader, optimizer, device):
         omega = batch['omega'].to(device)
         n_atoms = batch['n_atoms'].to(device)
         inv_sqrt_n = batch['inv_sqrt_n'].to(device)
+        gamma = batch['gamma'].to(device)
+        dimension = batch['dimension'].to(device)
         t = batch['t'].to(device)
         sz_mean = batch['sz_mean'].to(device)
         
         optimizer.zero_grad()
-        pred = model(omega, n_atoms, inv_sqrt_n, t)
+        pred = model(omega, n_atoms, inv_sqrt_n, gamma, dimension, t)
         
         loss_dict = physics_informed_loss(pred, sz_mean)
         loss = loss_dict['loss']
@@ -144,7 +146,7 @@ def evaluate(model, dataloader, device):
     total_mse = 0.0
     total_mae = 0.0
     total_rho_ss_mae = 0.0
-    total_ic_error = 0.0  # initial condition error
+    total_ic_error = 0.0
     n_batches = 0
     
     with torch.no_grad():
@@ -152,16 +154,17 @@ def evaluate(model, dataloader, device):
             omega = batch['omega'].to(device)
             n_atoms = batch['n_atoms'].to(device)
             inv_sqrt_n = batch['inv_sqrt_n'].to(device)
+            gamma = batch['gamma'].to(device)
+            dimension = batch['dimension'].to(device)
             t = batch['t'].to(device)
             sz_mean = batch['sz_mean'].to(device)
-            rho_ss = batch['rho_ss'].to(device)
             
-            pred = model(omega, n_atoms, inv_sqrt_n, t)
+            pred = model(omega, n_atoms, inv_sqrt_n, gamma, dimension, t)
             
             mse = F.mse_loss(pred, sz_mean)
             mae = F.l1_loss(pred, sz_mean)
             
-            # Steady-state MAE on order parameter rho (last 50 points)
+            # Steady-state MAE on rho (last 50 points)
             pred_rho = (pred[:, -50:] + 1.0) / 2.0
             true_rho = (sz_mean[:, -50:] + 1.0) / 2.0
             pred_rho_ss = pred_rho.mean(dim=1)
@@ -187,13 +190,20 @@ def evaluate(model, dataloader, device):
 
 def main(args):
     set_seed(args.seed)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Device selection: CUDA > MPS > CPU
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
     print(f"Using device: {device}")
     
     # Load data
     print(f"Loading dataset from: {args.data_path}")
     records = load_dataset(args.data_path)
-    train_r, val_r, test_r = create_splits(records)
+    train_r, val_r, test_sets = create_splits(records)
     
     train_ds = TrajectoryDataset(train_r, augment=True)
     val_ds = TrajectoryDataset(val_r, augment=False)
@@ -201,12 +211,21 @@ def main(args):
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
         collate_fn=collate_fn, worker_init_fn=worker_init_fn,
-        num_workers=0,  # CPU-only machine; increase on GPU
+        num_workers=0,
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
         collate_fn=collate_fn,
     )
+    
+    # Test loaders
+    test_loaders = {}
+    for name, test_r in test_sets.items():
+        test_ds = TrajectoryDataset(test_r, augment=False)
+        test_loaders[name] = DataLoader(
+            test_ds, batch_size=args.batch_size, shuffle=False,
+            collate_fn=collate_fn,
+        )
     
     # Initialize model
     model = RydbergSurrogate(
@@ -299,11 +318,25 @@ def main(args):
             print(f"Early stopping at epoch {epoch}")
             break
     
-    print(f"Training complete. Best val MSE: {best_val_mse:.6f}")
+    print(f"\nTraining complete. Best val MSE: {best_val_mse:.6f}")
     if save_path is not None:
         print(f"Best model saved to: {save_path}")
-    else:
-        print("WARNING: No model was saved (validation never improved)")
+    
+    # Final evaluation on all test sets
+    if save_path is not None:
+        print("\n" + "=" * 70)
+        print("TEST SET EVALUATION")
+        print("=" * 70)
+        checkpoint = torch.load(save_path, map_location=device)
+        model.load_state_dict(checkpoint['model'])
+        
+        for name, loader in test_loaders.items():
+            metrics = evaluate(model, loader, device)
+            print(f"\n{name}:")
+            print(f"  MSE:        {metrics['mse']:.6f}")
+            print(f"  MAE:        {metrics['mae']:.6f}")
+            print(f"  ρ_ss MAE:   {metrics['rho_ss_mae']:.6f}")
+            print(f"  IC error:   {metrics['ic_error']:.6f}")
     
     if args.use_wandb:
         wandb.finish()
@@ -313,7 +346,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # Data
-    parser.add_argument('--data_path', type=str, default='outputs/rydberg_dataset.pkl')
+    parser.add_argument('--data_path', type=str, default='outputs/rydberg_dataset_v2.pkl')
     parser.add_argument('--output_dir', type=str, default='outputs/models')
     
     # Model

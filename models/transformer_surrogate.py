@@ -72,9 +72,9 @@ class RydbergSurrogate(nn.Module):
         self.n_embd = n_embd
         self.n_time = n_time
         
-        # Parameter embedding: [Omega, N, 1/sqrt(N)] -> n_embd
+        # Parameter embedding: [Omega, N, 1/sqrt(N), log10(gamma), dimension] -> n_embd
         self.param_embed = nn.Sequential(
-            nn.Linear(3, n_embd),
+            nn.Linear(5, n_embd),
             nn.GELU(),
             nn.Linear(n_embd, n_embd),
         )
@@ -102,12 +102,14 @@ class RydbergSurrogate(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
     
-    def forward(self, omega, n_atoms, inv_sqrt_n, t):
+    def forward(self, omega, n_atoms, inv_sqrt_n, gamma, dimension, t):
         """
         Args:
             omega: (batch,) or (batch, 1)
             n_atoms: (batch,) or (batch, 1)
             inv_sqrt_n: (batch,) or (batch, 1)
+            gamma: (batch,) or (batch, 1) — log10(γ)
+            dimension: (batch,) or (batch, 1) — 1.0, 2.0, or 3.0
             t: (batch, n_time)
             
         Returns:
@@ -121,8 +123,12 @@ class RydbergSurrogate(nn.Module):
             n_atoms = n_atoms.unsqueeze(1)
         if inv_sqrt_n.dim() == 1:
             inv_sqrt_n = inv_sqrt_n.unsqueeze(1)
+        if gamma.dim() == 1:
+            gamma = gamma.unsqueeze(1)
+        if dimension.dim() == 1:
+            dimension = dimension.unsqueeze(1)
         
-        params = torch.cat([omega, n_atoms, inv_sqrt_n], dim=-1)
+        params = torch.cat([omega, n_atoms, inv_sqrt_n, gamma, dimension], dim=-1)
         param_emb = self.param_embed(params)  # (batch, n_embd)
         
         t_reshaped = t.unsqueeze(-1)  # (batch, n_time, 1)
@@ -150,8 +156,10 @@ if __name__ == '__main__':
     omega = torch.randn(batch_size)
     n_atoms = torch.tensor([225.0, 400.0, 900.0, 1225.0])
     inv_sqrt_n = 1.0 / torch.sqrt(n_atoms)
+    gamma = torch.tensor([-1.0, -1.0, -1.0, -1.0])  # log10(0.1)
+    dimension = torch.tensor([2.0, 2.0, 2.0, 2.0])
     t = torch.linspace(0, 1000, 400).unsqueeze(0).expand(batch_size, -1)
     
-    sz_pred = model(omega, n_atoms, inv_sqrt_n, t)
+    sz_pred = model(omega, n_atoms, inv_sqrt_n, gamma, dimension, t)
     print(f"Input shapes: omega={omega.shape}, t={t.shape}")
     print(f"Output shape: sz_pred={sz_pred.shape}")

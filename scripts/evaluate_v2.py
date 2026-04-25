@@ -381,7 +381,10 @@ def main(args):
     all_preds, all_trues, all_metas = {}, {}, {}
 
     # Evaluate on all splits
-    for name, split_records in [("Train", train_r), ("Val", val_r)] + list(test_sets.items()):
+    splits_to_eval = [("Train", train_r), ("Val", val_r)] + list(test_sets.items())
+    if args.skip_gamma_transfer:
+        splits_to_eval = [(n, r) for n, r in splits_to_eval if n != "gamma_generalization_2d"]
+    for name, split_records in splits_to_eval:
         print(f"\nEvaluating {name}...")
         preds, trues, metas, metrics = run_inference(model, split_records, device)
         all_metrics[name] = metrics
@@ -396,10 +399,15 @@ def main(args):
     print("\nGenerating figures...")
 
     # Fig 1: Trajectory overlays (use val for near-critical + test for extrapolation)
-    combined_records = val_r + test_sets.get("size_extrapolation_2d", []) + test_sets.get("gamma_generalization_2d", [])
-    combined_preds = all_preds["Val"] + all_preds.get("size_extrapolation_2d", []) + all_preds.get("gamma_generalization_2d", [])
-    combined_trues = all_trues["Val"] + all_trues.get("size_extrapolation_2d", []) + all_trues.get("gamma_generalization_2d", [])
-    combined_metas = all_metas["Val"] + all_metas.get("size_extrapolation_2d", []) + all_metas.get("gamma_generalization_2d", [])
+    combined_records = val_r + test_sets.get("size_extrapolation_2d", [])
+    combined_preds = all_preds["Val"] + all_preds.get("size_extrapolation_2d", [])
+    combined_trues = all_trues["Val"] + all_trues.get("size_extrapolation_2d", [])
+    combined_metas = all_metas["Val"] + all_metas.get("size_extrapolation_2d", [])
+    if not args.skip_gamma_transfer and "gamma_generalization_2d" in test_sets:
+        combined_records += test_sets["gamma_generalization_2d"]
+        combined_preds += all_preds.get("gamma_generalization_2d", [])
+        combined_trues += all_trues.get("gamma_generalization_2d", [])
+        combined_metas += all_metas.get("gamma_generalization_2d", [])
     fig_trajectory_overlays(combined_records, combined_preds, combined_trues, combined_metas)
 
     # Fig 2: Size extrapolation
@@ -410,7 +418,7 @@ def main(args):
                                 all_metas["size_extrapolation_2d"])
 
     # Fig 3: Gamma transfer
-    if "gamma_generalization_2d" in test_sets:
+    if not args.skip_gamma_transfer and "gamma_generalization_2d" in test_sets:
         fig_gamma_transfer(test_sets["gamma_generalization_2d"],
                            all_preds["gamma_generalization_2d"],
                            all_trues["gamma_generalization_2d"],
@@ -437,5 +445,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True, help="Path to trained model checkpoint")
     parser.add_argument("--data_path", type=str, default="data/rydberg_dataset_v2.pkl")
+    parser.add_argument("--skip_gamma_transfer", action="store_true", help="Skip gamma generalization test set")
     args = parser.parse_args()
     main(args)

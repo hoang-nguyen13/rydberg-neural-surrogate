@@ -18,3 +18,4 @@ Rydberg_facilitation/
 
 # Keep the dataset in data/
 !data/rydberg_dataset_v2.pkl
+.venv/

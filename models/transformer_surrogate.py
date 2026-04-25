@@ -73,14 +73,21 @@ class RydbergSurrogate(nn.Module):
         self.n_time = n_time
         
         # Parameter embedding: [Omega, N, 1/sqrt(N), log10(gamma), dimension] -> n_embd
+        # Input normalization constants (approx dataset stats for zero-mean unit-variance)
+        self.register_buffer('param_mean', torch.tensor([15.0, 2000.0, 0.04, 0.0, 2.0]))
+        self.register_buffer('param_std', torch.tensor([10.0, 2000.0, 0.02, 1.0, 1.0]))
+        
         self.param_embed = nn.Sequential(
             nn.Linear(5, n_embd),
+            nn.LayerNorm(n_embd),
             nn.GELU(),
             nn.Linear(n_embd, n_embd),
         )
         
         # Time coordinate embedding
         self.time_embed = nn.Linear(1, n_embd)
+        self.register_buffer('t_mean', torch.tensor(500.0))
+        self.register_buffer('t_std', torch.tensor(300.0))
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
@@ -129,10 +136,12 @@ class RydbergSurrogate(nn.Module):
             dimension = dimension.unsqueeze(1)
         
         params = torch.cat([omega, n_atoms, inv_sqrt_n, gamma, dimension], dim=-1)
-        param_emb = self.param_embed(params)  # (batch, n_embd)
+        params_norm = (params - self.param_mean) / self.param_std
+        param_emb = self.param_embed(params_norm)  # (batch, n_embd)
         
         t_reshaped = t.unsqueeze(-1)  # (batch, n_time, 1)
-        time_emb = self.time_embed(t_reshaped)  # (batch, n_time, n_embd)
+        t_norm = (t_reshaped - self.t_mean) / self.t_std
+        time_emb = self.time_embed(t_norm)  # (batch, n_time, n_embd)
         
         x = param_emb.unsqueeze(1) + time_emb  # (batch, n_time, n_embd)
         

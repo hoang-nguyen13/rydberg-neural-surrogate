@@ -186,8 +186,10 @@ def main(args):
         print("\n" + "=" * 60)
         print("TEST EVALUATION")
         print("=" * 60)
-        checkpoint = torch.load(save_path, map_location=device)
-        model.load_state_dict(checkpoint["model"])
+        checkpoint = torch.load(save_path, map_location=device, weights_only=False)
+        state_dict = checkpoint["model"]
+        state_dict = {k: v for k, v in state_dict.items() if not k.startswith("_")}
+        model.load_state_dict(state_dict)
 
         for name, loader in test_loaders.items():
             metrics = evaluate(model, loader, device)
@@ -203,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
-    parser.add_argument("--max_epochs", type=int, default=1000)
+    parser.add_argument("--max_epochs", type=int, default=500)
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--log_interval", type=int, default=10)
     parser.add_argument("--n_modes", type=int, default=32)
